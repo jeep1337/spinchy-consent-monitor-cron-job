@@ -1,0 +1,27 @@
+name: Cookiebot Consent -> New Relic
+
+on:
+  schedule:
+    - cron: "20 1 * * *"  # daily at 01:20 UTC (previous day pull)
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run consent sync
+        env:
+          COOKIEBOT_API_KEY: ${{ secrets.COOKIEBOT_API_KEY }}
+          COOKIEBOT_DOMAIN_GROUP_ID: ${{ secrets.COOKIEBOT_DOMAIN_GROUP_ID }}
+          COOKIEBOT_DOMAIN: ${{ secrets.COOKIEBOT_DOMAIN }}
+          NEW_RELIC_ACCOUNT_ID: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          NEW_RELIC_INGEST_KEY: ${{ secrets.NEW_RELIC_INGEST_KEY }}
+          ENVIRONMENT: prod
+        run: node scripts/cookiebot_to_newrelic.js
