@@ -25,3 +25,4 @@ jobs:
           NEW_RELIC_INGEST_KEY: ${{ secrets.NEW_RELIC_INGEST_KEY }}
           ENVIRONMENT: prod
         run: node scripts/cookiebot_to_newrelic.js
+
