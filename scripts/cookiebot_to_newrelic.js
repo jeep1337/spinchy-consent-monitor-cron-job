@@ -15,6 +15,16 @@ function yyyymmdd(date) {
   return `${y}${m}${d}`;
 }
 
+function parseDateYyyymmdd(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  if (!/^\d{8}$/.test(s)) return null;
+  const y = Number(s.slice(0, 4));
+  const m = Number(s.slice(4, 6)) - 1;
+  const d = Number(s.slice(6, 8));
+  return new Date(Date.UTC(y, m, d));
+}
+
 function httpRequest(method, url, headers = {}, body = null, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const req = https.request(url, { method, headers, timeout: timeoutMs }, (res) => {
@@ -23,9 +33,7 @@ function httpRequest(method, url, headers = {}, body = null, timeoutMs = 20000) 
       res.on('end', () => resolve({ statusCode: res.statusCode || 0, body: data, headers: res.headers }));
     });
     req.on('error', reject);
-    req.on('timeout', () => {
-      req.destroy(new Error(`Request timeout: ${method} ${url}`));
-    });
+    req.on('timeout', () => req.destroy(new Error(`Request timeout: ${method} ${url}`)));
     if (body) req.write(body);
     req.end();
   });
@@ -40,6 +48,7 @@ async function withRetry(fn, attempts = 3, baseDelayMs = 1200) {
       lastErr = err;
       if (i < attempts) {
         const delay = baseDelayMs * i;
+        console.log(`[retry] attempt ${i} failed, waiting ${delay}ms...`);
         await new Promise((r) => setTimeout(r, delay));
       }
     }
@@ -54,9 +63,14 @@ function toNumberOrNull(v) {
 }
 
 function normalizeRows(raw) {
+  if (!raw) return [];
   if (Array.isArray(raw)) return raw;
-  if (raw && Array.isArray(raw.data)) return raw.data;
-  if (raw && Array.isArray(raw.stats)) return raw.stats;
+  if (Array.isArray(raw.data)) return raw.data;
+  if (Array.isArray(raw.stats)) return raw.stats;
+  if (raw.result && Array.isArray(raw.result.data)) return raw.result.data;
+  if (raw.result && Array.isArray(raw.result.stats)) return raw.result.stats;
+  if (raw.payload && Array.isArray(raw.payload.data)) return raw.payload.data;
+  if (raw.payload && Array.isArray(raw.payload.stats)) return raw.payload.stats;
   return [];
 }
 
@@ -69,20 +83,35 @@ function mapRowToEvent(row, meta) {
     domainGroupId: meta.domainGroupId,
     date: row.date || row.Date || null,
     countryCode: row.countryCode || row.country || null,
-
-    // Common consent counters (names vary by API payloads/accounts)
     consents: toNumberOrNull(row.consents ?? row.Consents),
     optIns: toNumberOrNull(row.optIns ?? row.optins ?? row.OptIns),
     optOuts: toNumberOrNull(row.optOuts ?? row.optouts ?? row.OptOuts),
-
     necessaryConsents: toNumberOrNull(row.necessaryConsents ?? row.necessary ?? row.strictOptIns),
     preferencesConsents: toNumberOrNull(row.preferencesConsents ?? row.preferences ?? row.preferencesOptIns),
     statisticsConsents: toNumberOrNull(row.statisticsConsents ?? row.statistics ?? row.statisticsOptIns),
     marketingConsents: toNumberOrNull(row.marketingConsents ?? row.marketing ?? row.marketingOptIns),
-
-    // Technical metadata
     pulledAt: new Date().toISOString()
   };
+}
+
+function getDateRange() {
+  const STARTDATE = (process.env.STARTDATE || '').trim();
+  const ENDDATE = (process.env.ENDDATE || '').trim();
+  const LOOKBACK_DAYS = Number((process.env.LOOKBACK_DAYS || '7').trim());
+
+  if (STARTDATE && ENDDATE) {
+    const start = parseDateYyyymmdd(STARTDATE);
+    const end = parseDateYyyymmdd(ENDDATE);
+    if (!start || !end) throw new Error('STARTDATE/ENDDATE must be YYYYMMDD.');
+    if (start > end) throw new Error('STARTDATE cannot be after ENDDATE.');
+    return { startdate: STARTDATE, enddate: ENDDATE, mode: 'explicit' };
+  }
+
+  const now = new Date();
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const days = Number.isFinite(LOOKBACK_DAYS) && LOOKBACK_DAYS > 0 ? Math.floor(LOOKBACK_DAYS) : 7;
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
+  return { startdate: yyyymmdd(start), enddate: yyyymmdd(end), mode: `lookback_${days}d` };
 }
 
 async function main() {
@@ -93,20 +122,15 @@ async function main() {
   const NEW_RELIC_INGEST_KEY = assertEnv('NEW_RELIC_INGEST_KEY');
   const ENVIRONMENT = (process.env.ENVIRONMENT || 'prod').trim();
 
-  // Test mode: pull a 7-day UTC window ending yesterday.
-  const now = new Date();
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 7));
-  const startdate = yyyymmdd(start);
-  const enddate = yyyymmdd(end);
-
+  const range = getDateRange();
   const cookiebotUrl =
     `https://consent.cookiebot.com/api/v1/${COOKIEBOT_API_KEY}/json/domaingroup/${COOKIEBOT_DOMAIN_GROUP_ID}` +
-    `/domain/${encodeURIComponent(COOKIEBOT_DOMAIN)}/consent/stats?startdate=${startdate}&enddate=${enddate}`;
+    `/domain/${encodeURIComponent(COOKIEBOT_DOMAIN)}/consent/stats?startdate=${range.startdate}&enddate=${range.enddate}`;
 
-  console.log(`[cookiebot] Fetching ${startdate}..${enddate} for ${COOKIEBOT_DOMAIN}`);
-
+  console.log(`[cookiebot] Fetching ${range.startdate}..${range.enddate} for ${COOKIEBOT_DOMAIN} (${range.mode})`);
   const cbResp = await withRetry(() => httpRequest('GET', cookiebotUrl), 3, 1200);
+  console.log(`[cookiebot] HTTP ${cbResp.statusCode}`);
+
   if (cbResp.statusCode < 200 || cbResp.statusCode >= 300) {
     throw new Error(`Cookiebot API failed: ${cbResp.statusCode} ${cbResp.body}`);
   }
@@ -118,7 +142,12 @@ async function main() {
     throw new Error(`Cookiebot API returned invalid JSON: ${cbResp.body}`);
   }
 
+  const keys = cbJson && typeof cbJson === 'object' ? Object.keys(cbJson) : [];
+  console.log(`[cookiebot] root keys: ${keys.join(', ') || '(none)'}`);
+  console.log(`[cookiebot] raw preview: ${JSON.stringify(cbJson).slice(0, 900)}`);
+
   const rows = normalizeRows(cbJson);
+  console.log(`[cookiebot] normalized rows: ${rows.length}`);
   if (!rows.length) {
     console.log('[cookiebot] No rows returned. Exiting cleanly.');
     return;
@@ -134,6 +163,7 @@ async function main() {
 
   const nrUrl = `https://insights-collector.eu01.nr-data.net/v1/accounts/${NEW_RELIC_ACCOUNT_ID}/events`;
   const payload = JSON.stringify(events);
+  console.log(`[newrelic] Sending ${events.length} events to account ${NEW_RELIC_ACCOUNT_ID}`);
 
   const nrResp = await withRetry(
     () =>
