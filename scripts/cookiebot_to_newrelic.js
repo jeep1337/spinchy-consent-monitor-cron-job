@@ -104,7 +104,7 @@ function mapRowToEvent(row, meta) {
 function getDateRange() {
   const STARTDATE = (process.env.STARTDATE || '').trim();
   const ENDDATE = (process.env.ENDDATE || '').trim();
-  const LOOKBACK_DAYS = Number((process.env.LOOKBACK_DAYS || '7').trim());
+  const LOOKBACK_DAYS = Number((process.env.LOOKBACK_DAYS || '1').trim());
 
   if (STARTDATE && ENDDATE) {
     const start = parseDateYyyymmdd(STARTDATE);
@@ -116,7 +116,7 @@ function getDateRange() {
 
   const now = new Date();
   const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
-  const days = Number.isFinite(LOOKBACK_DAYS) && LOOKBACK_DAYS > 0 ? Math.floor(LOOKBACK_DAYS) : 7;
+  const days = Number.isFinite(LOOKBACK_DAYS) && LOOKBACK_DAYS > 0 ? Math.floor(LOOKBACK_DAYS) : 1;
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days));
   return { startdate: yyyymmdd(start), enddate: yyyymmdd(end), mode: `lookback_${days}d` };
 }
