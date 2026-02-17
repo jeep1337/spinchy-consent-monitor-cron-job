@@ -93,11 +93,12 @@ async function main() {
   const NEW_RELIC_INGEST_KEY = assertEnv('NEW_RELIC_INGEST_KEY');
   const ENVIRONMENT = (process.env.ENVIRONMENT || 'prod').trim();
 
-  // Recommended: pull previous full UTC day to avoid duplicate daily rows.
+  // Test mode: pull a 7-day UTC window ending yesterday.
   const now = new Date();
-  const yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
-  const startdate = yyyymmdd(yesterday);
-  const enddate = yyyymmdd(yesterday);
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 7));
+  const startdate = yyyymmdd(start);
+  const enddate = yyyymmdd(end);
 
   const cookiebotUrl =
     `https://consent.cookiebot.com/api/v1/${COOKIEBOT_API_KEY}/json/domaingroup/${COOKIEBOT_DOMAIN_GROUP_ID}` +
