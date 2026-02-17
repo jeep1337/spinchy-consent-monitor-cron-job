@@ -67,6 +67,8 @@ function normalizeRows(raw) {
   if (Array.isArray(raw)) return raw;
   if (Array.isArray(raw.data)) return raw.data;
   if (Array.isArray(raw.stats)) return raw.stats;
+  if (raw.consentstat && Array.isArray(raw.consentstat.consentday)) return raw.consentstat.consentday;
+  if (raw.ConsentStat && Array.isArray(raw.ConsentStat.ConsentDay)) return raw.ConsentStat.ConsentDay;
   if (raw.result && Array.isArray(raw.result.data)) return raw.result.data;
   if (raw.result && Array.isArray(raw.result.stats)) return raw.result.stats;
   if (raw.payload && Array.isArray(raw.payload.data)) return raw.payload.data;
@@ -75,6 +77,10 @@ function normalizeRows(raw) {
 }
 
 function mapRowToEvent(row, meta) {
+  const optIns = toNumberOrNull(row.optIns ?? row.optins ?? row.OptIns ?? row.OptIn);
+  const optOuts = toNumberOrNull(row.optOuts ?? row.optouts ?? row.OptOuts ?? row.OptOut);
+  const optInImplied = toNumberOrNull(row.optInImplied ?? row.OptInImplied);
+
   return {
     eventType: 'SgtmConsentDaily',
     source: 'cookiebot',
@@ -83,13 +89,14 @@ function mapRowToEvent(row, meta) {
     domainGroupId: meta.domainGroupId,
     date: row.date || row.Date || null,
     countryCode: row.countryCode || row.country || null,
-    consents: toNumberOrNull(row.consents ?? row.Consents),
-    optIns: toNumberOrNull(row.optIns ?? row.optins ?? row.OptIns),
-    optOuts: toNumberOrNull(row.optOuts ?? row.optouts ?? row.OptOuts),
-    necessaryConsents: toNumberOrNull(row.necessaryConsents ?? row.necessary ?? row.strictOptIns),
-    preferencesConsents: toNumberOrNull(row.preferencesConsents ?? row.preferences ?? row.preferencesOptIns),
-    statisticsConsents: toNumberOrNull(row.statisticsConsents ?? row.statistics ?? row.statisticsOptIns),
-    marketingConsents: toNumberOrNull(row.marketingConsents ?? row.marketing ?? row.marketingOptIns),
+    consents: toNumberOrNull(row.consents ?? row.Consents) ?? (optIns !== null && optOuts !== null ? optIns + optOuts : optIns),
+    optIns: optIns,
+    optOuts: optOuts,
+    optInImplied: optInImplied,
+    necessaryConsents: toNumberOrNull(row.necessaryConsents ?? row.necessary ?? row.strictOptIns ?? row.OptInStrict),
+    preferencesConsents: toNumberOrNull(row.preferencesConsents ?? row.preferences ?? row.preferencesOptIns ?? row.TypeOptInPref),
+    statisticsConsents: toNumberOrNull(row.statisticsConsents ?? row.statistics ?? row.statisticsOptIns ?? row.TypeOptInStat),
+    marketingConsents: toNumberOrNull(row.marketingConsents ?? row.marketing ?? row.marketingOptIns ?? row.TypeOptInMark),
     pulledAt: new Date().toISOString()
   };
 }
