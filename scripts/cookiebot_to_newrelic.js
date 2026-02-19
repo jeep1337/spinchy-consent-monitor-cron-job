@@ -68,7 +68,13 @@ function normalizeRows(raw) {
   if (Array.isArray(raw.data)) return raw.data;
   if (Array.isArray(raw.stats)) return raw.stats;
   if (raw.consentstat && Array.isArray(raw.consentstat.consentday)) return raw.consentstat.consentday;
+  if (raw.consentstat && raw.consentstat.consentday && typeof raw.consentstat.consentday === 'object') {
+    return [raw.consentstat.consentday];
+  }
   if (raw.ConsentStat && Array.isArray(raw.ConsentStat.ConsentDay)) return raw.ConsentStat.ConsentDay;
+  if (raw.ConsentStat && raw.ConsentStat.ConsentDay && typeof raw.ConsentStat.ConsentDay === 'object') {
+    return [raw.ConsentStat.ConsentDay];
+  }
   if (raw.result && Array.isArray(raw.result.data)) return raw.result.data;
   if (raw.result && Array.isArray(raw.result.stats)) return raw.result.stats;
   if (raw.payload && Array.isArray(raw.payload.data)) return raw.payload.data;
